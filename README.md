@@ -41,6 +41,18 @@ python smart_mute.py <wav_path> <api_token> [--base_url BASE_URL]
 python smart_mute.py input.wav YOUR_API_TOKEN
 ```
 
+### Batch processing (recursive, 5 parallel jobs)
+
+Process every `.wav` under a directory tree with up to five files handled concurrently:
+
+```bash
+API_TOKEN="YOUR_TOKEN"
+ROOT="/path/to/wav/root"
+
+find "$ROOT" -type f -iname '*.wav' -print0 \
+  | xargs -0 -n1 -P 5 -I{} python smart_mute.py "{}" "$API_TOKEN"
+```
+
 The processed file will be saved in the same directory as the input file with `_smart_mute` appended to the filename. For example, if your input file is `input.wav`, the output will be `input_smart_mute.wav`.
 
 ### Requirements
