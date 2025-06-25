@@ -159,13 +159,13 @@ def smart_mute(file_path: str, api_token: str, base_url: str = "https://groovy.a
 if __name__ == "__main__":
     """
     Quick CLI wrapper so you can run:
-        python smart_mute.py /path/to/file.wav YOUR_API_TOKEN
+        python smart_mute.py /path/to/file.wav [YOUR_API_TOKEN]
     """
     import argparse
 
     parser = argparse.ArgumentParser(description="Remove music from audio/video files using AudioShake.")
     parser.add_argument("file_path", help="Path to the input file (supports .wav, .mp3, .m4a, .mp4, .mov)")
-    parser.add_argument("api_token", help="AudioShake API token")
+    parser.add_argument("api_token", nargs="?", help="AudioShake API token (optional if AUDIOSHAKE_TOKEN env var is set)")
     parser.add_argument(
         "--base_url",
         default="https://groovy.audioshake.ai",
@@ -173,8 +173,14 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
+    # Get API token from command line argument or environment variable
+    api_token = args.api_token or os.getenv('AUDIOSHAKE_TOKEN')
+    if not api_token:
+        print("❌  Error: API token is required. Provide it as an argument or set AUDIOSHAKE_TOKEN environment variable.", file=sys.stderr)
+        sys.exit(1)
+
     try:
-        output = smart_mute(args.file_path, api_token=args.api_token, base_url=args.base_url)
+        output = smart_mute(args.file_path, api_token=api_token, base_url=args.base_url)
         print(f"✅  Process complete. Output written to: {output}")
     except Exception as exc:
         print("❌  An error occurred while processing:", file=sys.stderr)

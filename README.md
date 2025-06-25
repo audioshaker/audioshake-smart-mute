@@ -31,23 +31,24 @@ pip install -r requirements.txt
 The tool provides a simple command-line interface to process audio and video files:
 
 ```bash
-python smart_mute.py <file_path> <api_token> [--base_url BASE_URL]
+python smart_mute.py <file_path> [api_token] [--base_url BASE_URL]
 ```
 
 ### Arguments
 
 - `file_path`: Path to the input file (supports .wav, .mp3, .m4a, .mp4, .mov)
-- `api_token`: Your AudioShake API token
+- `api_token`: (Optional) Your AudioShake API token - if not provided, uses `AUDIOSHAKE_TOKEN` environment variable
 - `--base_url`: (Optional) Override the AudioShake API base URL
 
 ### Examples
 
 ```bash
-# Process a WAV file
+# Process a WAV file with API token as argument
 python smart_mute.py input.wav YOUR_API_TOKEN
 
-# Process an MP3 file
-python smart_mute.py song.mp3 YOUR_API_TOKEN
+# Process an MP3 file using environment variable
+export AUDIOSHAKE_TOKEN="YOUR_API_TOKEN"
+python smart_mute.py song.mp3
 
 # Process a video file (MP4/MOV)
 python smart_mute.py video.mp4 YOUR_API_TOKEN
@@ -58,10 +59,17 @@ python smart_mute.py video.mp4 YOUR_API_TOKEN
 Process every supported audio/video file under a directory tree with up to five files handled concurrently:
 
 ```bash
+# Option 1: Using environment variable (recommended for batch processing)
+export AUDIOSHAKE_TOKEN="YOUR_TOKEN"
+ROOT="/path/to/media/root"
+
+find "$ROOT" -type f \( -iname '*.wav' -o -iname '*.mp3' -o -iname '*.m4a' -o -iname '*.mp4' -o -iname '*.mov' \) -print0 \
+  | xargs -0 -n1 -P 5 -I{} python smart_mute.py "{}"
+
+# Option 2: Using command line argument
 API_TOKEN="YOUR_TOKEN"
 ROOT="/path/to/media/root"
 
-# Process all supported formats
 find "$ROOT" -type f \( -iname '*.wav' -o -iname '*.mp3' -o -iname '*.m4a' -o -iname '*.mp4' -o -iname '*.mov' \) -print0 \
   | xargs -0 -n1 -P 5 -I{} python smart_mute.py "{}" "$API_TOKEN"
 ```
