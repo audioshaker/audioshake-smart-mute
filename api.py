@@ -15,15 +15,54 @@ class AudioShakeClient:
             "Accept": "application/json"
         }
 
+    def validate_connection(self) -> bool:
+        """Validate that the API token is valid and the service is accessible."""
+        try:
+            # Try to access a simple endpoint to validate the token
+            url = f"{self.base_url}/job/"
+            resp = requests.get(url, headers=self.headers, timeout=10)
+            if resp.status_code == 401:
+                raise RuntimeError("Invalid API token - authentication failed")
+            elif resp.status_code == 403:
+                raise RuntimeError("API token lacks required permissions")
+            elif resp.status_code >= 500:
+                raise RuntimeError("AudioShake service is currently unavailable")
+            return True
+        except requests.exceptions.ConnectionError:
+            raise RuntimeError(f"Cannot connect to AudioShake API at {self.base_url}")
+        except requests.exceptions.Timeout:
+            raise RuntimeError("Connection to AudioShake API timed out")
+        except Exception as e:
+            raise RuntimeError(f"Failed to validate connection: {str(e)}")
+
     # ---------- Core API helpers ----------
 
     def upload_file(self, file_path: str) -> dict:
+        # Validate file exists and is readable
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
+        
+        file_size = os.path.getsize(file_path)
+        print(f"📁 File size: {file_size / (1024*1024):.2f} MB")
+        
+        # Check if file is too large (AudioShake might have limits)
+        if file_size > 500 * 1024 * 1024:  # 500MB limit
+            print("⚠️  Warning: File is larger than 500MB, which might cause issues")
+        
         url = f"{self.base_url}/upload/"
-        with open(file_path, "rb") as f:
-            files = {"file": f}
-            resp = requests.post(url, headers=self.headers, files=files)
-        resp.raise_for_status()
-        return resp.json()
+        try:
+            with open(file_path, "rb") as f:
+                files = {"file": f}
+                print(f"📤 Uploading to: {url}")
+                resp = requests.post(url, headers=self.headers, files=files, timeout=300)  # 5 minute timeout
+            resp.raise_for_status()
+            return resp.json()
+        except requests.exceptions.Timeout:
+            raise RuntimeError(f"Upload timed out for file: {file_path}")
+        except requests.exceptions.RequestException as e:
+            raise RuntimeError(f"Upload failed for file {file_path}: {str(e)}")
+        except Exception as e:
+            raise RuntimeError(f"Unexpected error during upload: {str(e)}")
 
     def create_job(self, asset_id: str, metadata: dict, callback_url: str = None) -> dict:
         url = f"{self.base_url}/job/"
@@ -59,12 +98,18 @@ class AudioShakeClient:
         metadata: dict,
         callback_url: str = None,
         poll_interval: int = 5,
-        timeout: int = 600,
+        timeout: int = 3600,
         output_dir: str = "."
     ) -> dict:
+        print(f"📤 Uploading file: {file_path}")
         asset = self.upload_file(file_path)
+        print(f"✅ File uploaded successfully. Asset ID: {asset['id']}")
+        
+        print(f"🚀 Creating job with metadata: {metadata}")
         job = self.create_job(asset["id"], metadata, callback_url)
         job_id = job["id"]
+        print(f"✅ Job created successfully. Job ID: {job_id}")
+        
         start = time.time()
 
         # Create output directory if it doesn't exist
@@ -77,8 +122,10 @@ class AudioShakeClient:
         while True:
             job_info = self.get_job(job_id)["job"]
             status = job_info["status"]
+            print(f"📊 Job {job_id} status: {status}")
 
             if status == "completed":
+                print(f"✅ Job {job_id} completed successfully!")
                 for a in job_info.get("outputAssets", []):
                     if a.get("link"):
                         # Get model name from metadata or use default
@@ -88,6 +135,7 @@ class AudioShakeClient:
                         # Construct output filename
                         output_filename = f"{input_base_name}_{model_name}.{format_ext}"
                         output_path = os.path.join(output_dir, output_filename)
+                        print(f"📥 Downloading output to: {output_path}")
                         self.download_asset(a["link"], output_path)
                         output_paths.append(output_path)
                 # Add output path information to the return value
@@ -98,7 +146,13 @@ class AudioShakeClient:
                 return job_info
 
             if status in ("failed", "error"):
-                raise RuntimeError(f"Job {job_id} failed: {status}")
+                # Get more detailed error information
+                error_details = job_info.get("error", "No error details available")
+                error_message = job_info.get("errorMessage", "No error message available")
+                print(f"❌ Job {job_id} failed with status: {status}")
+                print(f"❌ Error details: {error_details}")
+                print(f"❌ Error message: {error_message}")
+                raise RuntimeError(f"Job {job_id} failed: {status}. Details: {error_details}. Message: {error_message}")
 
             if time.time() - start > timeout:
                 raise TimeoutError(f"Job {job_id} timed out after {timeout}s")
@@ -159,7 +213,7 @@ class AudioShakeClient:
         metadata_list: List[Dict],
         callback_url: str = None,
         poll_interval: int = 5,
-        timeout: int = 600,
+        timeout: int = 3600,
         output_dir: str = "."
     ) -> List[Dict]:
         asset_id = self.upload_file(file_path)["id"]
